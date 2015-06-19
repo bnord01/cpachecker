@@ -25,6 +25,7 @@ package org.sosy_lab.cpachecker.cpa.dominator.parametric;
 
 import org.sosy_lab.cpachecker.cfa.model.CFANode;
 import org.sosy_lab.cpachecker.core.defaults.MergeJoinOperator;
+import org.sosy_lab.cpachecker.core.defaults.SingletonPrecision;
 import org.sosy_lab.cpachecker.core.defaults.StaticPrecisionAdjustment;
 import org.sosy_lab.cpachecker.core.defaults.StopSepOperator;
 import org.sosy_lab.cpachecker.core.interfaces.AbstractDomain;
@@ -90,6 +91,6 @@ public class DominatorCPA {
   }
 
   public Precision getInitialPrecision(CFANode pNode, StateSpacePartition pPartition) {
-    return null;
+    return SingletonPrecision.getInstance();
   }
 }

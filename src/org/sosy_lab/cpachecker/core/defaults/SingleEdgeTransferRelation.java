@@ -40,7 +40,7 @@ import org.sosy_lab.cpachecker.exceptions.CPATransferException;
 public abstract class SingleEdgeTransferRelation implements TransferRelation {
 
   @Override
-  public final Collection<? extends AbstractState> getAbstractSuccessors(AbstractState pState, Precision pPrecision)
+  public Collection<? extends AbstractState> getAbstractSuccessors(AbstractState pState, Precision pPrecision)
       throws CPATransferException, InterruptedException {
 
     throw new UnsupportedOperationException(

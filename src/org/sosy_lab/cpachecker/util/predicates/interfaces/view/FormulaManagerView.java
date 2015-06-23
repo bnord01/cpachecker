@@ -81,6 +81,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.base.Predicate;
 import com.google.common.base.Predicates;
 import com.google.common.collect.Collections2;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -179,7 +180,7 @@ public class FormulaManagerView implements StatisticsProvider {
       case INTEGER:
         rawBitvectorFormulaManager = new ReplaceBitvectorWithNumeralAndFunctionTheory<>(wrappingHandler,
             manager.getIntegerFormulaManager(), manager.getFunctionFormulaManager(),
-            ignoreExtractConcat, symbolEncoding);
+            ignoreExtractConcat);
         break;
       case RATIONAL:
         NumeralFormulaManager<NumeralFormula, RationalFormula> rmgr;
@@ -194,14 +195,14 @@ public class FormulaManagerView implements StatisticsProvider {
         }
         rawBitvectorFormulaManager = new ReplaceBitvectorWithNumeralAndFunctionTheory<>(wrappingHandler,
             rmgr, manager.getFunctionFormulaManager(),
-            ignoreExtractConcat, symbolEncoding);
+            ignoreExtractConcat);
       break;
       case FLOAT:
         throw new InvalidConfigurationException("Value FLOAT is not valid for option cpa.predicate.encodeBitvectorAs");
       default:
         throw new AssertionError();
     }
-    bitvectorFormulaManager = new BitvectorFormulaManagerView(wrappingHandler, rawBitvectorFormulaManager, manager.getBooleanFormulaManager());
+    bitvectorFormulaManager = new BitvectorFormulaManagerView(wrappingHandler, rawBitvectorFormulaManager, manager.getBooleanFormulaManager(), symbolEncoding);
 
     integerFormulaManager = new NumeralFormulaManagerView<>(wrappingHandler, manager.getIntegerFormulaManager());
     booleanFormulaManager = new BooleanFormulaManagerView(wrappingHandler, manager.getBooleanFormulaManager(), manager.getUnsafeFormulaManager());
@@ -954,7 +955,8 @@ public class FormulaManagerView implements StatisticsProvider {
       if (unsafeManager.isFreeVariable(tt)) {
         String oldName = unsafeManager.getName(tt);
         String newName = pRenameFunction.apply(oldName);
-        Formula renamed = unsafeManager.replaceName(tt, newName);
+        Formula renamed = unsafeManager.replaceArgsAndName(
+            tt, newName, ImmutableList.<Formula>of());
         pCache.put(tt, renamed);
 
       } else if (unsafeManager.isBoundVariable(tt)) {

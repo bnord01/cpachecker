@@ -38,6 +38,7 @@ import javax.annotation.Nullable;
 
 import org.sosy_lab.common.Appender;
 import org.sosy_lab.common.Appenders;
+import org.sosy_lab.common.Pair;
 import org.sosy_lab.common.ShutdownNotifier;
 import org.sosy_lab.common.configuration.Configuration;
 import org.sosy_lab.common.io.PathCounterTemplate;
@@ -49,16 +50,17 @@ import scala.collection.mutable.ArrayBuffer;
 import ap.SimpleAPI;
 import ap.basetypes.IdealInt;
 import ap.parser.IAtom;
-import ap.parser.IBoolLit;
 import ap.parser.IConstant;
 import ap.parser.IExpression;
+import ap.parser.IExpression.BooleanFunApplier;
 import ap.parser.IFormula;
-import ap.parser.IFormulaITE;
 import ap.parser.IFunApp;
 import ap.parser.IFunction;
 import ap.parser.IIntLit;
 import ap.parser.ITerm;
 import ap.parser.ITermITE;
+
+import com.google.common.collect.Iterables;
 
 /** This is a Wrapper around Princess.
  * This Wrapper allows to set a logfile for all Smt-Queries (default "princess.###.smt2").
@@ -71,6 +73,9 @@ class PrincessEnvironment {
    * so we need to have the same objects. */
   private final Map<String, IFormula> boolVariablesCache = new HashMap<>();
   private final Map<String, ITerm> intVariablesCache = new HashMap<>();
+
+  /** The key of this map is the abbreviation, the value is the full expression.*/
+  private final List<Pair<IExpression, IExpression>> abbrevCache = new ArrayList<>();
   private final Map<String, IFunction> functionsCache = new HashMap<>();
   private final Map<IFunction, TermType> functionsReturnTypes = new HashMap<>();
 
@@ -125,7 +130,9 @@ class PrincessEnvironment {
     for (IFunction s : functionsCache.values()) {
       stack.addSymbol(s);
     }
-
+    for(Pair<IExpression, IExpression> e : abbrevCache) {
+      stack.addAbbrev(e.getFirst(), e.getSecond());
+    }
     registeredStacks.add(stack);
     allStacks.add(stack);
     return stack;
@@ -162,41 +169,64 @@ class PrincessEnvironment {
     throw new UnsupportedOperationException(); // todo: implement this
   }
 
-  public Appender dumpFormula(final IExpression formula) {
+  public Appender dumpFormula(IExpression formula) {
+    // remove redundant expressions
+    final IExpression lettedFormula = PrincessUtil.let(formula, this);
     return new Appenders.AbstractAppender() {
 
       @Override
       public void appendTo(Appendable out) throws IOException {
-        Set<IExpression> declaredFunctions = PrincessUtil.getVarsAndUIFs(Collections.singleton(formula));
+        Set<IExpression> declaredFunctions = PrincessUtil.getVarsAndUIFs(Collections.singleton(lettedFormula));
 
         for (IExpression var : declaredFunctions) {
           out.append("(declare-fun ");
-          out.append(getName(var));
+          String name = getName(var);
 
-          // function parameters
-          out.append(" (");
-          if (var instanceof IFunApp) {
-            IFunApp function = (IFunApp) var;
-            Iterator<ITerm> args = JavaConversions.asJavaIterable(function.args()).iterator();
-            while (args.hasNext()) {
-              args.next();
-              // Princess does only support IntegerFormulas in UIFs we don't need
-              // to check the type here separately
-              if (args.hasNext()) {
-                out.append("Int ");
-              } else {
-                out.append("Int");
+          // we do only want to add declare-funs for things we really declared
+          // the rest is done afterwards
+          if (!name.startsWith("abbrev_")) {
+            out.append(name);
+
+            // function parameters
+            out.append(" (");
+            if (var instanceof IFunApp) {
+              IFunApp function = (IFunApp) var;
+              Iterator<ITerm> args = JavaConversions.asJavaIterable(function.args()).iterator();
+              while (args.hasNext()) {
+                args.next();
+                // Princess does only support IntegerFormulas in UIFs we don't need
+                // to check the type here separately
+                if (args.hasNext()) {
+                  out.append("Int ");
+                } else {
+                  out.append("Int");
+                }
               }
             }
-          }
 
-          out.append(") ");
-          out.append(getType(var));
+            out.append(") ");
+            out.append(getType(var));
+            out.append(")\n");
+          }
+        }
+
+        // now as everything we know from the formula is declared we have to add
+        // the abbreviations, too
+        for (Pair<IExpression, IExpression> entry : abbrevCache) {
+          IExpression abbrev = entry.getFirst();
+          IExpression fullFormula = entry.getSecond();
+          String name = getName(Iterables.getOnlyElement(PrincessUtil.getVarsAndUIFs(Collections.singleton(abbrev))));
+          out.append("(define-fun ");
+          out.append(name);
+
+          // the type of each abbreviation + the renamed formula
+          out.append(" ((abbrev_arg Int)) Int (");
+          out.append(fullFormula.toString());
           out.append(")\n");
         }
 
         out.append("(assert ");
-        out.append(formula.toString());
+        out.append(lettedFormula.toString());
         out.append(")");
       }
     };
@@ -282,6 +312,7 @@ class PrincessEnvironment {
   TermType getReturnTypeForFunction(IFunction fun) {
     return functionsReturnTypes.get(fun);
   }
+
   public IExpression makeFunction(IFunction funcDecl, List<IExpression> args) {
     checkArgument(args.size() == funcDecl.arity(),
         "functiontype has different number of args.");
@@ -302,14 +333,32 @@ class PrincessEnvironment {
 
     // boolean term -> build ITE(t > 0, true, false)
     if (returnType == TermType.Boolean) {
-      IFormula condition = ((ITerm)returnFormula).$greater(new IIntLit(IdealInt.ZERO()));
-      returnFormula = new IFormulaITE(condition, new IBoolLit(true), new IBoolLit(false));
+      BooleanFunApplier ap = new BooleanFunApplier(funcDecl);
+      return ap.apply(argsBuf);
 
     } else if (returnType != TermType.Integer) {
       throw new AssertionError("Not possible to have return types for functions other than bool or int.");
     }
 
     return returnFormula;
+  }
+
+  public IExpression abbrev(IExpression expr) {
+    IExpression abbrev;
+    if (expr instanceof IFormula) {
+      abbrev = api.abbrev((IFormula)expr);
+    } else if (expr instanceof ITerm) {
+      abbrev = api.abbrev((ITerm)expr);
+    } else {
+      throw new AssertionError("no possibility to create abbreviation for " + expr.getClass());
+    }
+
+    for (SymbolTrackingPrincessStack stack : allStacks) {
+      stack.addAbbrev(abbrev, expr);
+    }
+
+    abbrevCache.add(Pair.of(abbrev, expr));
+    return abbrev;
   }
 
   public String getVersion() {

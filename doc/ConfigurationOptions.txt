@@ -163,6 +163,9 @@ analysis.stopAfterError = true
 # create summary call statement edges
 analysis.summaryEdges = false
 
+# traverse in the order defined by the values of an automaton variable
+analysis.traversal.byAutomatonVariable = no default value
+
 # which strategy to adopt for visiting states?
 analysis.traversal.order = DFS
   enum:     [DFS, BFS, RAND, RANDOM_PATH]
@@ -495,9 +498,15 @@ counterexample.presenceConditionFile = "ErrorPath.%d.presenceCondition.txt"
 # similar infeasible counterexamples to get discovered, but is unsound
 counterexample.removeInfeasibleErrors = false
 
+# Compute and export information about the verification coverage?
+coverage.enabled = true
+
 # print coverage info to file
 coverage.export = true
 coverage.file = "coverage.info"
+
+# print coverage summary to stdout
+coverage.stdout = true
 
 # CPA to use (see doc/Configuration.txt for more documentation on this)
 cpa = CompositeCPA.class.getCanonicalName()
@@ -505,6 +514,9 @@ cpa = CompositeCPA.class.getCanonicalName()
 # Use this to change the underlying abstract domain in the APRON library
 cpa.apron.domain = "OCTAGON"
   allowed values: [BOX, OCTAGON, POLKA, POLKA_STRICT, POLKA_EQ]
+
+# get an initial precision from file
+cpa.apron.initialPrecisionFile = no default value
 
 # this option determines which initial precision should be used
 cpa.apron.initialPrecisionType = "STATIC_FULL"
@@ -516,6 +528,9 @@ cpa.apron.mergeop.onlyMergeAtLoopHeads = false
 # of which type should the merge be?
 cpa.apron.mergeop.type = "SEP"
   allowed values: [SEP, JOIN, WIDENING]
+
+# target file to hold the exported precision
+cpa.apron.precisionFile = no default value
 
 # whether or not to check for repeated refinements, to then reset the
 # refinement root
@@ -1010,11 +1025,8 @@ cpa.predicate.abstraction.initialPredicates.applyGlobally = false
 
 # when reading predicates from file, convert them to BV-theory. This option
 # depends on the 'variableEncodingFile'.
-cpa.predicate.abstraction.initialPredicates.encodeAsBV = false
-
-# where to read symbols and their possible encoding,this corresponds to
-# 'cpa.predicate.symbolEncodingFile' of a previous execution.
-cpa.predicate.abstraction.initialPredicates.symbolEncodingFile = "SymbolEncoding.txt"
+cpa.predicate.abstraction.initialPredicates.encodePredicates = DISABLE
+  enum:     [DISABLE, INT2BV, BV2INT]
 
 # An initial set of comptued abstractions that might be reusable
 cpa.predicate.abstraction.reuseAbstractionsFrom = no default value
@@ -1153,6 +1165,9 @@ cpa.predicate.ignoreExtractConcat = true
 
 # Ignore variables that are not relevant for reachability properties.
 cpa.predicate.ignoreIrrelevantVariables = true
+
+# do not include assumptions of states into path formula during strengthening
+cpa.predicate.ignoreStateAssumptions = false
 
 # Which solver to use specifically for interpolation (default is to use the
 # main one).
@@ -1789,6 +1804,17 @@ cpa.value.initAssumptionVars = false
 # get an initial precision from file
 cpa.value.initialPrecisionFile = no default value
 
+# apply optimizations based on equality of input interpolant and candidate
+# interpolant
+cpa.value.interpolation.applyItpEqualityOptimization = true
+
+# apply optimizations based on CFA edges with only variable-renaming
+# semantics
+cpa.value.interpolation.applyRenamingOptimization = true
+
+# apply optimizations based on infeasibility of suffix
+cpa.value.interpolation.applyUnsatSuffixOptimization = true
+
 # which merge operator to use for ValueAnalysisCPA
 cpa.value.merge = "SEP"
   allowed values: [SEP, JOIN]
@@ -2168,6 +2194,16 @@ spec.transitionToStopForNegatedTokensetMatch = false
 # comma-separated list of files with specifications that should be checked
 # (see config/specification/ for examples)
 specification = no default value
+
+# export abstract states as formula, e.g. for re-using them as
+# PredicatePrecision.
+statesToFormulas.exportFile = no default value
+
+# instead of writing the exact state-representation as a single formula,
+# write its atoms as a list of formulas. Therefore we ignore operators for
+# conjunction and disjunction.
+statesToFormulas.splitFormulas = LOCATION
+  enum:     [LOCATION, STATE, ATOM]
 
 # Add all assumtions from the control flow automaton to the precision.
 staticRefiner.addAllControlFlowAssumes = false

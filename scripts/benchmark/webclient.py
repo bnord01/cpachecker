@@ -32,6 +32,7 @@ import base64
 import io
 import logging
 import os
+import random
 import shutil
 import threading
 import zlib
@@ -68,6 +69,7 @@ class WebClientError(Exception):
 
 _thread_local = threading.local()
 _unfinished_run_ids = set()
+_groupId = None
 _webclient = None
 _base64_user_pwd = None
 _svn_branch = None
@@ -126,7 +128,9 @@ def init(config, benchmark):
         
     if config.cloudUser:
         _base64_user_pwd = base64.b64encode(config.cloudUser.encode("utf-8")).decode("utf-8")
-        
+    
+    _groupId = str(random.randint(0, 1000000))
+    
     benchmark.executable = 'scripts/cpa.sh'
 
 def get_system_info():
@@ -154,6 +158,9 @@ def execute_benchmark(benchmark, output_handler):
     except KeyboardInterrupt as e:
         STOPPED_BY_INTERRUPT = True
         raise e
+    except:
+        stop()
+        raise
     finally:
         output_handler.output_after_benchmark(STOPPED_BY_INTERRUPT)
 
@@ -242,9 +249,8 @@ def _submitRun(run, benchmark, counter = 0):
             programTexts.append(programText)
     params = {'programText': programTexts}
 
-    if benchmark.config.revision:
-        params['svnBranch'] = _svn_branch
-        params['revision'] = _svn_revision
+    params['svnBranch'] = _svn_branch
+    params['revision'] = _svn_revision
 
     if run.propertyfile:
         with open(run.propertyfile, 'r') as propertyFile:
@@ -266,12 +272,17 @@ def _submitRun(run, benchmark, counter = 0):
         raise WebClientError('Command {0} of run {1}  contains option that is not usable with the webclient. '\
             .format(run.options, run.identifier))
 
+    params['groupId'] = _groupId;
+
     # prepare request
     headers = {"Content-Type": "application/x-www-form-urlencoded",
                "Content-Encoding": "deflate",
                "Accept": "text/plain",
-               "Connection": "Keep-Alive", 
-               "Authorization": "Basic " + _base64_user_pwd}
+               "Connection": "Keep-Alive"}
+    
+    if _base64_user_pwd:
+        headers.update({"Authorization": "Basic " + _base64_user_pwd})
+    
     paramsCompressed = zlib.compress(urllib.urlencode(params, doseq=True).encode('utf-8'))
     path = _webclient.path + "runs/"
     
@@ -284,7 +295,7 @@ def _submitRun(run, benchmark, counter = 0):
         return runID
 
     else:
-        raise urllib2.HTTPError(response.read(), response.getcode())
+        raise urllib2.HTTPError(path, response.getcode(), response.read(), response.getheaders(), None)
 
 def _handleOptions(run, params, rlimits):
     # TODO use code from CPAchecker module, it add -stats and sets -timelimit,
@@ -352,14 +363,13 @@ def _handleOptions(run, params, rlimits):
     return False
 
 def _getResults(runIDs, output_handler, benchmark):
-    connection = _get_connection()
-    
+        
     while len(runIDs) > 0 :
         start = time()
         finishedRunIDs = []
         for runID in runIDs.keys():
-            if _isFinished(runID, benchmark, connection):
-                if(_getAndHandleResult(runID, runIDs[runID], output_handler, benchmark, connection)):
+            if _isFinished(runID, benchmark):
+                if(_getAndHandleResult(runID, runIDs[runID], output_handler, benchmark)):
                     finishedRunIDs.append(runID)
 
         for runID in finishedRunIDs:
@@ -367,14 +377,17 @@ def _getResults(runIDs, output_handler, benchmark):
         
         end = time();
         duration = end - start
-        if duration < 1:
-            sleep(1 - duration)
+        if duration < 5:
+            sleep(5 - duration)
     
 
-def _isFinished(runID, benchmark, connection):
+def _isFinished(runID, benchmark):
+    connection = _get_connection()
 
-    headers = {"Accept": "text/plain", "Connection": "Keep-Alive", \
-               "Authorization": "Basic " + _base64_user_pwd}
+    headers = {"Accept": "text/plain", "Connection": "Keep-Alive"}
+    if _base64_user_pwd:
+        headers.update({"Authorization": "Basic " + _base64_user_pwd})
+        
     path = _webclient.path + "runs/" + runID + "/state"
     connection.request("GET", path, headers=headers)
     response = connection.getresponse()
@@ -400,10 +413,14 @@ def _isFinished(runID, benchmark, connection):
 
         return False
 
-def _getAndHandleResult(runID, run, output_handler, benchmark, connection):
+def _getAndHandleResult(runID, run, output_handler, benchmark):
+    connection = _get_connection()
+    
     # download result as zip file
-    headers = {"Accept": "application/zip", "Connection": "Keep-Alive", \
-               "Authorization": "Basic " + _base64_user_pwd}
+    headers = {"Accept": "application/zip", "Connection": "Keep-Alive"}
+    if _base64_user_pwd:
+        headers.update({"Authorization": "Basic " + _base64_user_pwd})
+    
     path = _webclient.path + "runs/" + runID + "/result"
     
     counter = 0
@@ -420,7 +437,7 @@ def _getAndHandleResult(runID, run, output_handler, benchmark, connection):
             _unfinished_run_ids.remove(runID)
         else:
             logging.info('Could not get result of run {0}: {1}'.format(run.identifier, response.read()))
-            sleep(10)
+            sleep(1)
 
     if success:
         # unzip result

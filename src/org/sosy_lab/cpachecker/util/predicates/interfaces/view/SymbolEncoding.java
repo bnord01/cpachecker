@@ -23,31 +23,83 @@
  */
 package org.sosy_lab.cpachecker.util.predicates.interfaces.view;
 
+import static org.sosy_lab.cpachecker.util.predicates.interfaces.FormulaType.getBitvectorTypeWithSize;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.sosy_lab.common.Appender;
 import org.sosy_lab.common.io.Files;
 import org.sosy_lab.common.io.Path;
+import org.sosy_lab.cpachecker.cfa.CFA;
+import org.sosy_lab.cpachecker.cfa.ast.c.CParameterDeclaration;
+import org.sosy_lab.cpachecker.cfa.ast.c.CSimpleDeclaration;
+import org.sosy_lab.cpachecker.cfa.ast.c.CVariableDeclaration;
+import org.sosy_lab.cpachecker.cfa.model.CFAEdge;
+import org.sosy_lab.cpachecker.cfa.model.CFANode;
+import org.sosy_lab.cpachecker.cfa.model.MultiEdge;
+import org.sosy_lab.cpachecker.cfa.model.c.CDeclarationEdge;
+import org.sosy_lab.cpachecker.cfa.model.c.CFunctionCallEdge;
+import org.sosy_lab.cpachecker.cfa.model.c.CFunctionEntryNode;
+import org.sosy_lab.cpachecker.cfa.model.c.CFunctionReturnEdge;
+import org.sosy_lab.cpachecker.cfa.types.MachineModel;
+import org.sosy_lab.cpachecker.cfa.types.c.CSimpleType;
+import org.sosy_lab.cpachecker.cfa.types.c.CType;
+import org.sosy_lab.cpachecker.exceptions.CPAException;
+import org.sosy_lab.cpachecker.util.CFAUtils;
 import org.sosy_lab.cpachecker.util.predicates.interfaces.FormulaType;
+import org.sosy_lab.cpachecker.util.predicates.interfaces.FormulaType.BitvectorType;
 
 import com.google.common.base.Joiner;
+import com.google.common.base.Optional;
+import com.google.common.collect.FluentIterable;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Sets;
 
 
 public class SymbolEncoding {
 
-  public SymbolEncoding() {}
+  private Set<CSimpleDeclaration> decls = new HashSet<>();
+  private MachineModel machineModel = null;
+
+  /** This set contains function symbols that have a (maybe) unknown, but valid type.
+   *  We do not care about the type, because it is automatically determined. */
+  private final static Set<String> functionSymbols = Sets.newHashSet(
+      "and", "or", "not",
+      "=", "<", ">", "<=", ">=",
+      "+", "-", "*", "/",
+      "Integer__*_", "Integer__/_", "Integer__%_",
+      "Rational__*_", "Rational__/_", "Rational__%_",
+      "_~_", "_&_", "_!!_", "_^_", "_<<_", "_>>_",
+      "bvnot", "bvslt", "bvult", "bvsle", "bvule", "bvsgt", "bvugt", "bvsge", "bvuge",
+      "bvadd", "bvsub", "bvmul", "bvsdiv", "bvudiv", "bvsrem", "bvurem",
+      "bvand", "bvor", "bvxor", "bvshl", "bvlshr", "bvashr"
+      );
+
+  /** create an empty symbol encoding */
+  public SymbolEncoding() { }
+
+  /** create symbol encoding with information about symbol
+   * from variables of the CFA */
+  public SymbolEncoding(CFA pCfa) {
+    decls = getAllDeclarations(pCfa.getAllNodes());
+    machineModel = pCfa.getMachineModel();
+  }
+
 
   private final Map<String, Type<FormulaType<?>>> encodedSymbols = new HashMap<>();
 
-  public void put(String symbol, FormulaType<?> t) {
-    put(symbol, new Type<FormulaType<?>>(t));
+  public void put(String symbol, int length) {
+    put(symbol, new Type<FormulaType<?>>(getBitvectorTypeWithSize(length)));
   }
 
   public void put(String symbol, FormulaType<?> pReturnType, List<FormulaType<?>> pArgs) {
@@ -58,7 +110,9 @@ public class SymbolEncoding {
     // TODO currently we store all variables (even SSA-indexed ones),
     // but the basic form (without indices) maybe would be enough.
     if (encodedSymbols.containsKey(symbol)) {
-      assert encodedSymbols.get(symbol).equals(t);
+      assert encodedSymbols.get(symbol).equals(t) :
+        String.format("Symbol '%s' of type '%s' is already declared with the type '%s'.",
+            symbol, t, encodedSymbols.get(symbol));
     } else {
       encodedSymbols.put(symbol, t);
     }
@@ -68,10 +122,82 @@ public class SymbolEncoding {
     return encodedSymbols.containsKey(symbol);
   }
 
-  public Type<FormulaType<?>> getType(String symbol) {
-    return encodedSymbols.get(symbol);
+  public Type<FormulaType<?>> getType(String symbol) throws UnknownFormulaSymbolException {
+
+    if (functionSymbols.contains(symbol)) {
+      return null;
+    }
+
+    if (encodedSymbols.containsKey(symbol)) {
+      return encodedSymbols.get(symbol);
+    }
+
+    symbol = symbol.split("@")[0]; // sometimes we need to clean up SSA-indices
+    for (CSimpleDeclaration decl : decls) {
+      if (symbol.equals(decl.getQualifiedName())) {
+        CType cType = decl.getType().getCanonicalType();
+        return getType(cType);
+      }
+    }
+
+    // ignore complex types
+    throw new UnknownFormulaSymbolException(symbol);
   }
 
+  private Type<FormulaType<?>> getType(CType cType) {
+    final FormulaType<?> fType;
+    if (cType instanceof CSimpleType && ((CSimpleType)cType).getType().isFloatingPointType()) {
+      fType = FormulaType.RationalType;
+    } else {
+      int length = machineModel.getSizeof(cType) * machineModel.getSizeofCharInBits();
+      fType = BitvectorType.getBitvectorTypeWithSize(length);
+    }
+    Type<FormulaType<?>> type = new Type<FormulaType<?>>(fType);
+    if (cType instanceof CSimpleType) {
+      type.setSigness(!((CSimpleType)cType).isUnsigned());
+    }
+    return type;
+  }
+
+  /** iterator over all edges and collect all declarations */
+  private Set<CSimpleDeclaration> getAllDeclarations(Collection<CFANode> nodes) {
+    final Set<CSimpleDeclaration> sd = new HashSet<>();
+    for (CFANode node : nodes){
+
+      if (node instanceof CFunctionEntryNode) {
+        Optional<? extends CVariableDeclaration> retVar = ((CFunctionEntryNode) node).getReturnVariable();
+        if (retVar.isPresent()) {
+          sd.add(retVar.get());
+        }
+      }
+
+      final FluentIterable<CFAEdge> edges = CFAUtils.allLeavingEdges(node);
+      for (CDeclarationEdge edge : edges.filter(CDeclarationEdge.class)) {
+        sd.add(edge.getDeclaration());
+      }
+      for (CFunctionCallEdge edge : edges.filter(CFunctionCallEdge.class)) {
+        final List<? extends CParameterDeclaration> params = edge.getSuccessor().getFunctionParameters();
+        for (CParameterDeclaration param : params) {
+          sd.add(param);
+        }
+      }
+      for (CFunctionReturnEdge edge : edges.filter(CFunctionReturnEdge.class)) {
+        Optional<? extends CVariableDeclaration> retVar = edge.getFunctionEntry().getReturnVariable();
+        if (retVar.isPresent()) {
+          sd.add(retVar.get());
+        }
+      }
+      for (MultiEdge multiEdge : edges.filter(MultiEdge.class)) {
+        for (CDeclarationEdge edge : Iterables.filter(multiEdge.getEdges(), CDeclarationEdge.class)) {
+          sd.add(edge.getDeclaration());
+        }
+      }
+    }
+    return sd;
+  }
+
+  /** write out the current symbol encoding in a format,
+   * that can be read again via {@link readSymbolEncoding}. */
   public void dump(Path symbolEncodingFile) throws IOException {
     if (symbolEncodingFile != null) {
       Files.writeFile(symbolEncodingFile, new Appender() {
@@ -88,7 +214,8 @@ public class SymbolEncoding {
     }
   }
 
-  /** parse the file into a map */
+  /** parse the file into a map for a new SymbolEncoding. */
+  @Deprecated /* we use the CFA directly to get the encoding */
   public static SymbolEncoding readSymbolEncoding(Path symbolEncodingFile) throws IOException {
     final SymbolEncoding encoding = new SymbolEncoding();
     Files.checkReadableFile(symbolEncodingFile);
@@ -111,6 +238,7 @@ public class SymbolEncoding {
   /** just a nice replacement for Pair<T,List<T>> */
   public static class Type<T> {
 
+    private boolean signed = true; // default case: signed identifiers
     private final T returnType;
     private final List<T> parameterTypes;
 
@@ -127,6 +255,14 @@ public class SymbolEncoding {
     public T getReturnType() { return returnType; }
 
     public List<T> getParameterTypes() { return parameterTypes; }
+
+    public void setSigness(boolean signed) {
+      this.signed = signed;
+    }
+
+    public boolean isSigned() {
+      return signed;
+    }
 
     @Override
     public String toString() {
@@ -151,4 +287,15 @@ public class SymbolEncoding {
 
     public final static Type<Integer> BOOL = new Type<>(-1);
   }
+
+  public static class UnknownFormulaSymbolException extends CPAException {
+
+    private static final long serialVersionUID = 150615L;
+
+    public UnknownFormulaSymbolException(String symbol) {
+      super("unknown symbol in formula: " + symbol);
+    }
+
+  }
+
 }

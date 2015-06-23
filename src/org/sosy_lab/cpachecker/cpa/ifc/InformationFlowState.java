@@ -36,6 +36,7 @@ import org.sosy_lab.cpachecker.core.interfaces.AbstractState;
 import com.google.common.base.Equivalence;
 import com.google.common.base.Equivalence.Wrapper;
 import com.google.common.base.Function;
+import com.google.common.base.Predicate;
 
 /**
  * Created by bnord on 15.06.15.
@@ -63,6 +64,17 @@ abstract class InformationFlowState extends AbstractSingleWrapperState {
     }
   };
 
+  public Predicate<AbstractState> getEqualsExceptChildPredicate() {
+    return equalsExceptChildPredicate;
+  }
+
+  private Predicate<AbstractState> equalsExceptChildPredicate = new Predicate<AbstractState>() {
+    @Override
+    public boolean apply(@Nullable AbstractState state) {
+      return state instanceof InformationFlowState && equalsExceptChild((InformationFlowState)state);
+    }
+  };
+
   public InformationFlowState(AbstractState child) {
     super(child);
   }
@@ -82,6 +94,8 @@ abstract class InformationFlowState extends AbstractSingleWrapperState {
   abstract public InformationFlowState copyWith(AbstractState newChild);
 
   abstract public InformationFlowStateType getType();
+
+  abstract boolean equalsExceptChild(InformationFlowState other);
 }
 
 class InitialFlowState extends InformationFlowState {
@@ -95,10 +109,17 @@ class InitialFlowState extends InformationFlowState {
     return new InitialFlowState(newChild,isTarget());
   }
   public InformationFlowStateType getType() {return InformationFlowStateType.INITIAL_STATE;}
+
+  @Override
+  boolean equalsExceptChild(InformationFlowState other) {
+    return other instanceof InitialFlowState && other.isTarget() == isTarget();
+  }
+
   @Override
   public String toString(){
     return (isTarget()?"Targeted":"") + "InitialFlowState(child = " + super.toString() + ")";
   }
+
 }
 
 /**
@@ -123,9 +144,18 @@ class ControlDependencyState extends InformationFlowState {
   public InformationFlowStateType getType() {return InformationFlowStateType.CONTROL_DEP_TYPE;}
 
   @Override
+  boolean equalsExceptChild(InformationFlowState other) {
+    return other instanceof ControlDependencyState &&
+        getControllingNode().equals(((ControlDependencyState)other).getControllingNode()) &&
+        other.isTarget() == isTarget();
+  }
+
+  @Override
   public String toString(){
     return (isTarget()?"Targeted":"") + "ControlDependencyState(controllingNode = " + controllingNode + " , child = " + super.toString() + ")";
   }
+
+
 }
 
 
@@ -178,6 +208,14 @@ class SimpleDataDependencyState extends InformationFlowState {
     return new SimpleDataDependencyState(newChild, variable,isTarget());
   }
   public InformationFlowStateType getType() {return InformationFlowStateType.SIMPLE_DATA_DEP_STATE;}
+
+  @Override
+  boolean equalsExceptChild(InformationFlowState other) {
+    return other instanceof SimpleDataDependencyState &&
+        getVariable().equals(((SimpleDataDependencyState)other).getVariable()) &&
+        isTarget() == other.isTarget();
+  }
+
   public Wrapper<ASimpleDeclaration> getVariable() {
     return variable;
   }

@@ -23,6 +23,8 @@
  */
 package org.sosy_lab.cpachecker.cpa.ifc;
 
+import static com.google.common.collect.FluentIterable.*;
+
 import java.util.Collection;
 
 import org.sosy_lab.cpachecker.core.interfaces.AbstractState;
@@ -45,7 +47,7 @@ public class InformationFlowStopOperator implements StopOperator {
       Precision precision) throws CPAException, InterruptedException {
     return childStopOperator.stop(
         ((InformationFlowState)state).getWrappedState(),
-        Collections2.transform(reached,InformationFlowState.unWrapFunc),
+        from(reached).filter(((InformationFlowState)state).getEqualsExceptChildPredicate()).transform(InformationFlowState.unWrapFunc).toSet(),
         ((InformationFlowPrecision)precision).getWrappedPrecision());
 
   }

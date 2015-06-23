@@ -39,38 +39,13 @@ public class InformationFlowDomain implements AbstractDomain {
   @Override
   public boolean isLessOrEqual(AbstractState pElement1, AbstractState pElement2)
       throws CPAException, InterruptedException {
-    assert pElement1 instanceof InformationFlowState : "InformationFlowDomain.isLessOrEqual called without InformationFlowState as first parameter";
-    assert pElement2 instanceof InformationFlowState : "InformationFlowDomain.isLessOrEqual called without InformationFlowState as second parameter";
-    return isLessOrEqual((InformationFlowState)pElement1, (InformationFlowState) pElement2);
-  }
-
-  public boolean isLessOrEqual(InformationFlowState e1, InformationFlowState e2)
-      throws CPAException, InterruptedException {
-    if(e1 instanceof InitialFlowState && e2 instanceof InitialFlowState)
-      return e1.isTarget() == e2.isTarget() && childDomain.isLessOrEqual(e1.getWrappedState(), e2.getWrappedState());
-    else if(e1 instanceof SimpleDataDependencyState && e2 instanceof SimpleDataDependencyState) {
-      return ((SimpleDataDependencyState)e1).getVariable().equals(((SimpleDataDependencyState)e2).getVariable()) &&
-          e1.isTarget() == e2.isTarget() &&
-          childDomain.isLessOrEqual(e1.getWrappedState(), e2.getWrappedState());
-    } else if(e1 instanceof ControlDependencyState && e2 instanceof ControlDependencyState) {
-      return e1.isTarget() == e2.isTarget() &&
-          ((ControlDependencyState)e1).getControllingNode() == ((ControlDependencyState)e2).getControllingNode() &&
-          childDomain.isLessOrEqual(e1.getWrappedState(), e2.getWrappedState());
-    } else
-      return false;
+    InformationFlowState e1 = (InformationFlowState)pElement1;
+    InformationFlowState e2 = (InformationFlowState)pElement2;
+    return e1.equalsExceptChild(e2) && childDomain.isLessOrEqual(e1.getWrappedState(), e2.getWrappedState());
   }
 
   @Override
   public AbstractState join(AbstractState pElement1, AbstractState pElement2)
-      throws CPAException, InterruptedException {
-    assert pElement1 instanceof InformationFlowState : "InformationFlowDomain.join called without InformationFlowState as first parameter";
-    assert pElement2 instanceof InformationFlowState : "InformationFlowDomain.join called without InformationFlowState as second parameter";
-    return join((InformationFlowState)pElement1,
-        (InformationFlowState)pElement2);
-  }
-
-  public InformationFlowState join(InformationFlowState e1,
-      InformationFlowState e2)
       throws CPAException, InterruptedException {
     //TODO will have to check this.
     throw new UnsupportedOperationException("Join not implemented for Information Flow States!");

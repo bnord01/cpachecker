@@ -76,6 +76,7 @@ import com.google.common.base.Equivalence.Wrapper;
 import com.google.common.base.Function;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Collections2;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 
 //@Options(prefix="cpa.ifc")
@@ -300,18 +301,35 @@ public class InformationFlowTransferRelation extends ForwardingTransferRelation<
   protected Collection<InformationFlowState> postProcessing(Collection<InformationFlowState> successors) {
     Collection<? extends AbstractState> childSuccessors = null;
     try {
+
+
       childSuccessors = childTR.getAbstractSuccessorsForEdge(
           state.getWrappedState(), precision.getWrappedPrecision(), edge);
+
+      Collection<InformationFlowState> res = Sets.newHashSet();
+
+
+      for(InformationFlowState s : successors){
+        for(AbstractState childState : childSuccessors) {
+          InformationFlowState informationFlowState = s.copyWith(childState);
+          Collection<? extends AbstractState>
+              strengthendChilds = childTR.strengthen(childState, Lists.<AbstractState>newArrayList(informationFlowState), edge,
+              precision.getWrappedPrecision());
+          if(strengthendChilds == null) {
+            res.add(informationFlowState);
+          }else {
+            res.addAll(Collections2.transform(strengthendChilds, informationFlowState.getRewrapFunction()));
+          }
+        }
+      }
+
+      return res;
+
     } catch (CPATransferException e) {
       throw new RuntimeException(e);
     } catch (InterruptedException e) {
       throw new RuntimeException(e);
     }
-    Collection<InformationFlowState> res = Sets.newHashSet();
-    for(InformationFlowState s : successors){
-      res.addAll(Collections2.transform(childSuccessors, s.getRewrapFunction()));
-    }
-    return res;
   }
 
 

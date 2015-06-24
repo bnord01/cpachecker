@@ -24,6 +24,8 @@
 package org.sosy_lab.cpachecker.cpa.ifc;
 
 
+import static com.google.common.base.Preconditions.checkState;
+
 import javax.annotation.Nullable;
 
 import org.sosy_lab.cpachecker.cfa.ast.ASimpleDeclaration;
@@ -96,6 +98,12 @@ abstract class InformationFlowState extends AbstractSingleWrapperState {
   abstract public InformationFlowStateType getType();
 
   abstract boolean equalsExceptChild(InformationFlowState other);
+
+  @Override
+  public String getViolatedPropertyDescription() throws IllegalStateException {
+    checkState(isTarget());
+    return "Illegal Information flow";
+  }
 }
 
 class InitialFlowState extends InformationFlowState {

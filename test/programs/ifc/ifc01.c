@@ -1,5 +1,4 @@
-int h;
-
-int main() {
-   return h;
+// Insecure program
+int main(int h, int l) {
+  return h;
 }

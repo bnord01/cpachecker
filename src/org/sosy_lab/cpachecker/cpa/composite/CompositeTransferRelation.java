@@ -318,11 +318,52 @@ public final class CompositeTransferRelation implements TransferRelation {
   }
 
   @Override
-  public Collection<? extends AbstractState> strengthen(AbstractState element,
+  public Collection<CompositeState> strengthen(AbstractState element,
       List<AbstractState> otherElements, CFAEdge cfaEdge,
-      Precision precision) {
-    // strengthen is only called by the composite CPA on its component CPAs
-    return null;
+      Precision precision) throws CPATransferException, InterruptedException {
+    CompositeState lReachedState = (CompositeState)element;
+    CompositePrecision compositePrecision = (CompositePrecision)precision;
+    List<Collection<? extends AbstractState>> lStrengthenResults = new ArrayList<>(size);
+
+    int resultCount = 1;
+
+    boolean hasChanged = false;
+    for (int i = 0; i < size; i++) {
+
+      TransferRelation lCurrentTransfer = transferRelations.get(i);
+      AbstractState lCurrentElement = lReachedState.get(i);
+      Precision lCurrentPrecision = compositePrecision.get(i);
+
+      Collection<? extends AbstractState> lResultsList = lCurrentTransfer.strengthen(lCurrentElement, otherElements, cfaEdge, lCurrentPrecision);
+
+      if (lResultsList == null) {
+        lStrengthenResults.add(Collections.singleton(lCurrentElement));
+      } else {
+        hasChanged = true;
+        resultCount *= lResultsList.size();
+
+        if (resultCount == 0) {
+          // shortcut
+          break;
+        }
+        lStrengthenResults.add(lResultsList);
+      }
+    }
+
+    // No change in any state, return null
+    if(! hasChanged)
+      return null;
+
+    // create cartesian product again
+    Collection<List<AbstractState>> lResultingElements
+        = createCartesianProduct(lStrengthenResults, resultCount);
+
+    Collection<CompositeState> compositeSuccessors = new ArrayList<>(resultCount);
+    // finally, create a CompositeState for each result of the cartesian product
+    for (List<AbstractState> lList : lResultingElements) {
+      compositeSuccessors.add(new CompositeState(lList));
+    }
+    return compositeSuccessors;
   }
 
   boolean areAbstractSuccessors(AbstractState pElement, CFAEdge pCfaEdge, Collection<? extends AbstractState> pSuccessors, List<ConfigurableProgramAnalysis> cpas) throws CPATransferException, InterruptedException {

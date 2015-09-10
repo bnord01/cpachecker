@@ -59,10 +59,6 @@ public class DominatorState implements AbstractStateWithLocation, AbstractState 
     dominatedState = null;
   }
 
-  public DominatorState(DominatorState other) {
-    this(other.dominatedState, other.dominators);
-  }
-
   public DominatorState(AbstractState dominatedElement, DominatorState other) {
     this(dominatedElement, other.dominators);
   }

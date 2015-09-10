@@ -26,6 +26,9 @@ package org.sosy_lab.cpachecker.cpa.ifc;
 
 import static com.google.common.base.Preconditions.checkState;
 
+import java.util.Set;
+
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import org.sosy_lab.cpachecker.cfa.ast.ASimpleDeclaration;
@@ -45,7 +48,7 @@ import com.google.common.base.Predicate;
  */
 
 enum InformationFlowStateType {
-  INITIAL_STATE,SIMPLE_DATA_DEP_STATE,CONTROL_DEP_TYPE
+  INITIAL_STATE,SIMPLE_DATA_DEP_STATE,CONTROL_DEP_TYPE,DATA_CONTROL_DEP
 }
 
 abstract class InformationFlowState extends AbstractSingleWrapperState {
@@ -86,6 +89,9 @@ abstract class InformationFlowState extends AbstractSingleWrapperState {
     this.target = pTarget;
   }
 
+  public void setTarget(boolean pTarget) {
+    this.target = pTarget;
+  }
   private boolean target = false;
 
   @Override
@@ -167,50 +173,24 @@ class ControlDependencyState extends InformationFlowState {
 }
 
 
+
+
 /**
  * State that tracks a data dependency on a simple variable.
  */
 class SimpleDataDependencyState extends InformationFlowState {
-  public static final Equivalence<ASimpleDeclaration> DECL_EQUIVALENCE = new Equivalence<ASimpleDeclaration>() {
+  Variable variable;
 
-      @Override
-      protected boolean doEquivalent(ASimpleDeclaration pA, ASimpleDeclaration pB) {
-        if (pA instanceof CVariableDeclaration && pB instanceof CVariableDeclaration) {
-          return ((CVariableDeclaration)pA).equalsWithoutStorageClass(pB);
-        } else {
-          return pA.equals(pB);
-        }
-      }
-
-      @Override
-      protected int doHash(ASimpleDeclaration pT) {
-        if (pT instanceof CVariableDeclaration) {
-          return ((CVariableDeclaration)pT).hashCodeWithOutStorageClass();
-        } else {
-          return pT.hashCode();
-        }
-      }
-    };
-  public final static Function<ASimpleDeclaration, Equivalence.Wrapper<ASimpleDeclaration>> TO_EQUIV_WRAPPER =
-      new Function<ASimpleDeclaration, Equivalence.Wrapper<ASimpleDeclaration>>() {
-        @Override
-        public Equivalence.Wrapper<ASimpleDeclaration> apply(ASimpleDeclaration pInput) {
-          return DECL_EQUIVALENCE.wrap(pInput);
-        }};
-
-
-  Wrapper<ASimpleDeclaration> variable;
-
-  public SimpleDataDependencyState(AbstractState child,Wrapper<ASimpleDeclaration> pVariable) {
+  public SimpleDataDependencyState(AbstractState child,Variable pVariable) {
     super(child);
     this.variable = pVariable;
   }
-  public SimpleDataDependencyState(AbstractState child,Wrapper<ASimpleDeclaration> pVariable,boolean pTarget) {
+  public SimpleDataDependencyState(AbstractState child,Variable pVariable,boolean pTarget) {
     super(child,pTarget);
     this.variable = pVariable;
   }
   public SimpleDataDependencyState(AbstractState child,ASimpleDeclaration pVariable) {
-    this(child,DECL_EQUIVALENCE.wrap(pVariable));
+    this(child,new SimpleVariable(pVariable));
   }
   public SimpleDataDependencyState copyWith(AbstractState newChild) {
     return new SimpleDataDependencyState(newChild, variable,isTarget());
@@ -224,12 +204,51 @@ class SimpleDataDependencyState extends InformationFlowState {
         isTarget() == other.isTarget();
   }
 
-  public Wrapper<ASimpleDeclaration> getVariable() {
+  public Variable getVariable() {
     return variable;
   }
 
   @Override
   public String toString(){
     return (isTarget()?"Targeted":"") + "SimpleDataDependencyState(variable = " + variable + " , child = " + super.toString() + ")";
+  }
+}
+
+class DataControlDependencyState extends InformationFlowState {
+  Variable variable;
+  Set<CFANode> pds;
+  public DataControlDependencyState(AbstractState child, Variable pVariable, Set<CFANode> pPds) {
+    super(child);
+    this.variable = pVariable;
+    this.pds = pPds;
+    assert variable != null: "Variable must not be null";
+    assert pPds != null : "Post dominators must not be null";
+
+  }
+
+
+  @Override
+  public InformationFlowState copyWith(AbstractState newChild) {
+    return new DataControlDependencyState(newChild,variable,pds);
+  }
+
+  @Override
+  public InformationFlowStateType getType() {
+    return InformationFlowStateType.DATA_CONTROL_DEP;
+  }
+
+  public Variable getVariable () {
+    return variable;
+  }
+
+  public Set<CFANode> getPD () {
+    return pds;
+  }
+
+  @Override
+  boolean equalsExceptChild(InformationFlowState other) {
+    return other instanceof DataControlDependencyState &&
+        variable.equals(((DataControlDependencyState)other).variable) &&
+        pds.equals(((DataControlDependencyState)other).pds);
   }
 }

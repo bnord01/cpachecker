@@ -40,6 +40,8 @@ import java.util.logging.Level;
 import javax.annotation.Nullable;
 
 import org.sosy_lab.common.Pair;
+import org.sosy_lab.common.configuration.Configuration;
+import org.sosy_lab.common.configuration.InvalidConfigurationException;
 import org.sosy_lab.common.configuration.Option;
 import org.sosy_lab.common.configuration.Options;
 import org.sosy_lab.common.log.LogManager;
@@ -49,9 +51,11 @@ import org.sosy_lab.cpachecker.cfa.ast.ADeclaration;
 import org.sosy_lab.cpachecker.cfa.ast.AExpression;
 import org.sosy_lab.cpachecker.cfa.ast.AExpressionAssignmentStatement;
 import org.sosy_lab.cpachecker.cfa.ast.AExpressionStatement;
+import org.sosy_lab.cpachecker.cfa.ast.AFunctionCall;
 import org.sosy_lab.cpachecker.cfa.ast.AFunctionCallAssignmentStatement;
 import org.sosy_lab.cpachecker.cfa.ast.AFunctionCallStatement;
 import org.sosy_lab.cpachecker.cfa.ast.AFunctionDeclaration;
+import org.sosy_lab.cpachecker.cfa.ast.AInitializerExpression;
 import org.sosy_lab.cpachecker.cfa.ast.ALeftHandSide;
 import org.sosy_lab.cpachecker.cfa.ast.AParameterDeclaration;
 import org.sosy_lab.cpachecker.cfa.ast.ASimpleDeclaration;
@@ -64,6 +68,9 @@ import org.sosy_lab.cpachecker.cfa.model.AssumeEdge;
 import org.sosy_lab.cpachecker.cfa.model.BlankEdge;
 import org.sosy_lab.cpachecker.cfa.model.CFAEdge;
 import org.sosy_lab.cpachecker.cfa.model.CFANode;
+import org.sosy_lab.cpachecker.cfa.model.FunctionCallEdge;
+import org.sosy_lab.cpachecker.cfa.model.FunctionReturnEdge;
+import org.sosy_lab.cpachecker.cfa.model.FunctionSummaryEdge;
 import org.sosy_lab.cpachecker.core.defaults.ForwardingTransferRelation;
 import org.sosy_lab.cpachecker.core.interfaces.AbstractState;
 import org.sosy_lab.cpachecker.core.interfaces.AbstractStateWithLocation;
@@ -77,18 +84,19 @@ import com.google.common.base.Function;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Collections2;
 import com.google.common.collect.Lists;
+import com.google.common.collect.SetMultimap;
 import com.google.common.collect.Sets;
 
-//@Options(prefix="cpa.ifc")
+@Options(prefix="cpa.ifc")
 public class InformationFlowTransferRelation extends ForwardingTransferRelation<Collection<InformationFlowState>,InformationFlowState,InformationFlowPrecision> {
 
-  //@Option(secure=true, description = "The name of variable containing the secret information.")
+  @Option(secure=true, description = "The name of variable containing the secret information.")
   private String highVariable = "h";
-  //@Option(secure=true, description = "The name of variable visible to the public.")
-  private String lowVariable = "l";
+  @Option(secure=true, description = "The name of variable visible to the public.")
+  private String lowVariable = "<return>";
 
   private TransferRelation childTR;
-  private Map<CFANode,Set<CFANode>> postDominators;
+  private SetMultimap<CFANode,CFANode> postDominators;
   private InformationFlowStateType stateType;
   private boolean IS_INITIAL_STATE = false;
   private boolean IS_DATA_DEP_STATE = false;
@@ -98,10 +106,12 @@ public class InformationFlowTransferRelation extends ForwardingTransferRelation<
   private InitialFlowState initialFlowState;
   private LogManager logger;
 
-  public InformationFlowTransferRelation(TransferRelation child, Map<CFANode,Set<CFANode>> pPostDominators,LogManager pLogger){
+  public InformationFlowTransferRelation(Configuration conf,TransferRelation child, SetMultimap<CFANode,CFANode> pPostDominators,LogManager pLogger)
+      throws InvalidConfigurationException {
     this.logger = pLogger;
     this.childTR = child;
     this.postDominators = pPostDominators;
+    conf.inject(this);
   }
 
   @Override
@@ -162,11 +172,11 @@ public class InformationFlowTransferRelation extends ForwardingTransferRelation<
   }
 
   private Collection<InformationFlowState> handleAssignments(AAssignment assignment) {
-    final Collection<Wrapper<ASimpleDeclaration>> usedVariables = Sets.newHashSet();
+    final Collection<Variable> usedVariables = Sets.newHashSet();
     final ALeftHandSide leftHandSide = assignment.getLeftHandSide();
-    final Collection<Wrapper<ASimpleDeclaration>> assignedVariable = handleLeftHandSide(leftHandSide);
-    final Collection<Wrapper<ASimpleDeclaration>> allLeftHandSideVariables = handleExpression(leftHandSide);
-    final Collection<Wrapper<ASimpleDeclaration>> additionallyLeftHandSideVariables = filter(allLeftHandSideVariables, not(in(assignedVariable)));
+    final Collection<Variable> assignedVariable = Util.collectVariablesFromLeftHandSide(leftHandSide);
+    final Collection<Variable> allLeftHandSideVariables = Util.collectVariablesFromExpression(leftHandSide);
+    final Collection<Variable> additionallyLeftHandSideVariables = filter(allLeftHandSideVariables, not(in(assignedVariable)));
 
     // all variables that occur in combination with the leftHandSide additionally
     // to the needed one (e.g. a[i] i is additionally) are added to the usedVariables
@@ -178,13 +188,13 @@ public class InformationFlowTransferRelation extends ForwardingTransferRelation<
       throw new AssertionError("Unhandled assignment type.");
     }
 
-    usedVariables.addAll(handleExpression((AExpression)assignment.getRightHandSide()));
+    usedVariables.addAll(Util.collectVariablesFromExpression((AExpression)assignment.getRightHandSide()));
 
     if (assignedVariable.size() != 1) {
       throw new AssertionError("More than one variable assigned in " + assignment);
     }
 
-    Wrapper<ASimpleDeclaration> variable = assignedVariable.iterator().next();
+    Variable variable = assignedVariable.iterator().next();
 
     Collection<InformationFlowState> resultStates = Sets.newHashSet();
 
@@ -220,21 +230,39 @@ public class InformationFlowTransferRelation extends ForwardingTransferRelation<
         !(postDominators.get(controlDependencyState.getControllingNode()).contains(edge.getPredecessor()));
   }
 
-  private boolean isLow(Wrapper<ASimpleDeclaration> var) {
-    return lowVariable.equals(var.get().getName());
+  private boolean isHigh(Variable var) {
+    return highVariable.equals(var.getName()) || highVariable.equals(var.getQualifiedName());
   }
 
-  private boolean isHigh(Wrapper<ASimpleDeclaration> var) {
-    return highVariable.equals(var.get().getName());
+  private boolean isHigh(ASimpleDeclaration var) {
+    return highVariable.equals(var.getName()) || highVariable.equals(var.getQualifiedName());
+  }
+  private boolean isLow(Variable var) {
+    return lowVariable.equals(var.getName()) || lowVariable.equals(var.getQualifiedName());
+  }
+
+  @Override
+  protected Collection<InformationFlowState> handleFunctionCallEdge(FunctionCallEdge cfaEdge,
+      List<? extends AExpression> arguments, List<? extends AParameterDeclaration> parameters,
+      String calledFunctionName) throws CPATransferException {
+    //TODO handle this
+    return Collections.singleton(state);
+  }
+
+  @Override
+  protected Collection<InformationFlowState> handleFunctionReturnEdge(FunctionReturnEdge cfaEdge,
+      FunctionSummaryEdge fnkCall, AFunctionCall summaryExpr, String callerFunctionName) throws CPATransferException {
+    //TODO handle this
+    return Collections.singleton(state);
   }
 
   private boolean readsCritical(AExpression expression) {
-    Collection<Wrapper<ASimpleDeclaration>> vars = handleExpression(expression);
+    Collection<Variable> vars = Util.collectVariablesFromExpression(expression);
     if(IS_DATA_DEP_STATE && vars.contains(simpleDataDependencyState.getVariable()))
       return true;
-    if(IS_INITIAL_STATE && from(vars).anyMatch(new Predicate<Wrapper<ASimpleDeclaration>>(){
+    if(IS_INITIAL_STATE && from(vars).anyMatch(new Predicate<Variable>(){
       @Override
-      public boolean apply(Wrapper<ASimpleDeclaration> s) {
+      public boolean apply(Variable s) {
         return isHigh(s);
       }
     })) {
@@ -251,7 +279,7 @@ public class InformationFlowTransferRelation extends ForwardingTransferRelation<
     res.add(state);
 
     if(IS_INITIAL_STATE) {
-      if (decl instanceof AVariableDeclaration && highVariable.equals(decl.getName())) {
+      if (decl instanceof AVariableDeclaration && isHigh(decl)) {
         res.add(new SimpleDataDependencyState(state.getWrappedState(), decl));
       }
       if(decl instanceof AFunctionDeclaration) {
@@ -259,20 +287,28 @@ public class InformationFlowTransferRelation extends ForwardingTransferRelation<
         res.addAll(from(fdecl.getParameters()).filter(new Predicate<AParameterDeclaration>(){
           @Override
           public boolean apply(AParameterDeclaration pAParameterDeclaration) {
-            return highVariable.equals(pAParameterDeclaration.getName());
+            return isHigh(pAParameterDeclaration);
           }
         }).transform(new Function<AParameterDeclaration, InformationFlowState>() {
           @Nullable
           @Override
           public InformationFlowState apply(AParameterDeclaration pAParameterDeclaration) {
-            return new SimpleDataDependencyState(state.getWrappedState(),SimpleDataDependencyState.DECL_EQUIVALENCE.wrap(
+            return new SimpleDataDependencyState(state.getWrappedState(),new SimpleVariable(
                 (ASimpleDeclaration)pAParameterDeclaration));
           }
         }).toSet());
       }
     }
-
-
+    if(IS_DATA_DEP_STATE) {
+      if(decl instanceof AVariableDeclaration) {
+        if(((AVariableDeclaration)decl).getInitializer() instanceof AInitializerExpression) {
+          AExpression expr = ((AInitializerExpression)((AVariableDeclaration)decl).getInitializer()).getExpression();
+          if(Util.collectVariablesFromExpression(expr).contains(simpleDataDependencyState.getVariable())) {
+            res.add(new SimpleDataDependencyState(state.getWrappedState(), new SimpleVariable(decl)));
+          }
+        }
+      }
+    }
     return res;
 
   }
@@ -289,13 +325,23 @@ public class InformationFlowTransferRelation extends ForwardingTransferRelation<
   @Override
   protected Collection<InformationFlowState> handleReturnStatementEdge(AReturnStatementEdge cfaEdge)
       throws CPATransferException {
-    if(IS_DATA_DEP_STATE && cfaEdge.getExpression().isPresent() && readsCritical(cfaEdge.getExpression().get())) {
-      return Collections.<InformationFlowState>singleton(new SimpleDataDependencyState(state.getWrappedState(),simpleDataDependencyState.getVariable(),true));
-    } else if (IS_CONTROL_DEP_STATE) {
-      return Collections.<InformationFlowState>singleton(new ControlDependencyState(state.getWrappedState(),controlDependencyState.getControllingNode(),true));
+    Set<InformationFlowState> res = Sets.newHashSet();
+    if((IS_DATA_DEP_STATE && cfaEdge.getExpression().isPresent() && readsCritical(cfaEdge.getExpression().get())) || isControlDependent()) {
+      res.add(new SimpleDataDependencyState(state.getWrappedState(),ReturnVariable.instance()));
     }
-    else return Collections.EMPTY_LIST;
+    return res;
+
+
   }
+
+  private void setTarget(InformationFlowState s) {
+    if (s instanceof SimpleDataDependencyState) {
+      if (isLow(((SimpleDataDependencyState)s).getVariable())) {
+        s.setTarget(true);
+      }
+    }
+  }
+
 
   @Override
   protected Collection<InformationFlowState> postProcessing(Collection<InformationFlowState> successors) {
@@ -310,6 +356,7 @@ public class InformationFlowTransferRelation extends ForwardingTransferRelation<
 
 
       for(InformationFlowState s : successors){
+        setTarget(s);
         for(AbstractState childState : childSuccessors) {
           InformationFlowState informationFlowState = s.copyWith(childState);
           Collection<? extends AbstractState>
@@ -330,55 +377,6 @@ public class InformationFlowTransferRelation extends ForwardingTransferRelation<
     } catch (InterruptedException e) {
       throw new RuntimeException(e);
     }
-  }
-
-
-  /**
-   * Returns a collection of all variable names which occur in expression
-   */
-  private Collection<Wrapper<ASimpleDeclaration>> handleExpression(AExpression expression) {
-    return from(acceptAll(expression)).transform(SimpleDataDependencyState.TO_EQUIV_WRAPPER).toSet();
-  }
-
-  /**
-   * Returns a collection of the variable names in the leftHandSide
-   */
-  private Collection<Wrapper<ASimpleDeclaration>> handleLeftHandSide(AExpression pLeftHandSide) {
-    return from(acceptLeft(pLeftHandSide)).transform(SimpleDataDependencyState.TO_EQUIV_WRAPPER).toSet();
-  }
-
-  /**
-   * This is a more specific version of the CIdExpressionVisitor. For ArraySubscriptexpressions
-   * we do only want the IdExpressions inside the ArrayExpression.
-   */
-  private static final class LeftHandSideIdExpressionVisitor extends DeclarationCollectingVisitor {
-    @Override
-    public Set<ASimpleDeclaration> visit(AArraySubscriptExpression pE) {
-      return pE.getArrayExpression().<Set<ASimpleDeclaration>,
-          Set<ASimpleDeclaration>,
-          Set<ASimpleDeclaration>,
-          RuntimeException,
-          RuntimeException,
-          LeftHandSideIdExpressionVisitor>accept_(this);
-    }
-  }
-
-  private static Set<ASimpleDeclaration> acceptLeft(AExpression exp) {
-    return exp.<Set<ASimpleDeclaration>,
-        Set<ASimpleDeclaration>,
-        Set<ASimpleDeclaration>,
-        RuntimeException,
-        RuntimeException,
-        LeftHandSideIdExpressionVisitor>accept_(new LeftHandSideIdExpressionVisitor());
-  }
-
-  private static Set<ASimpleDeclaration> acceptAll(AExpression exp) {
-    return exp.<Set<ASimpleDeclaration>,
-        Set<ASimpleDeclaration>,
-        Set<ASimpleDeclaration>,
-        RuntimeException,
-        RuntimeException,
-        DeclarationCollectingVisitor>accept_(new DeclarationCollectingVisitor());
   }
 
 
@@ -409,10 +407,10 @@ public class InformationFlowTransferRelation extends ForwardingTransferRelation<
     Collection<InformationFlowState> res = new ArrayList<>(2);
 
     for (CFAEdge edge : locState.getOutgoingEdges()) {
-      logger.log(Level.INFO, "Handeling edge %s", edge);
+      logger.log(Level.INFO, "Handeling edge ", edge);
       Collection <InformationFlowState> succs = getAbstractSuccessorsForEdge(pElement, pPrecision, edge);
       res.addAll(succs);
-      logger.log(Level.INFO, "Got successors: %s", succs);
+      logger.log(Level.INFO, "Got successors: ", succs);
     }
 
     return res;

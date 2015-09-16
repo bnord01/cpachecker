@@ -100,7 +100,7 @@ public class DominatorDomain implements AbstractDomain {
   }
 
   @Override
-  public AbstractState join(AbstractState element1, AbstractState element2) {
+  public AbstractState join(AbstractState element1, AbstractState element2) throws CPAException, InterruptedException {
     if (!(element1 instanceof DominatorState)) {
       throw new IllegalArgumentException(
           "element1 is not a DominatorState!");
@@ -121,6 +121,12 @@ public class DominatorDomain implements AbstractDomain {
     if (element2.equals(topState)) {
       return dominatorState2;
     }
+
+    if(isLessOrEqual(dominatorState1, dominatorState2))
+      return dominatorState2;
+
+    if(isLessOrEqual(dominatorState2, dominatorState1))
+      return dominatorState1;
 
     if (!dominatorState1.getDominatedState().equals(dominatorState2.getDominatedState())) {
       return topState;

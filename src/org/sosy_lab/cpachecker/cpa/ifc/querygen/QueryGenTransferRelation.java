@@ -41,6 +41,7 @@ import org.sosy_lab.cpachecker.cfa.ast.c.CStatement;
 import org.sosy_lab.cpachecker.cfa.ast.c.CVariableDeclaration;
 import org.sosy_lab.cpachecker.cfa.model.CFAEdge;
 import org.sosy_lab.cpachecker.cfa.model.CFANode;
+import org.sosy_lab.cpachecker.cfa.model.c.CAssumeEdge;
 import org.sosy_lab.cpachecker.cfa.model.c.CDeclarationEdge;
 import org.sosy_lab.cpachecker.cfa.model.c.CReturnStatementEdge;
 import org.sosy_lab.cpachecker.cfa.model.c.CStatementEdge;
@@ -88,10 +89,14 @@ public class QueryGenTransferRelation implements TransferRelation {
       }
       case DeclarationEdge: {
         CDeclarationEdge declarationEdge = (CDeclarationEdge) cfaEdge;
-        if(declarationEdge.getDeclaration() instanceof CVariableDeclaration)
-          if( ((CVariableDeclaration)declarationEdge.getDeclaration()).getInitializer() instanceof CInitializerExpression)
+        if(declarationEdge.getDeclaration() instanceof CVariableDeclaration) {
+          vars.add(new SimpleVariable(declarationEdge.getDeclaration()));
+          if (((CVariableDeclaration)declarationEdge.getDeclaration())
+              .getInitializer() instanceof CInitializerExpression)
             vars.addAll(Util.collectVariablesFromExpression(
-                ((CInitializerExpression)((CVariableDeclaration)declarationEdge.getDeclaration()).getInitializer()).getExpression()));
+                ((CInitializerExpression)((CVariableDeclaration)declarationEdge.getDeclaration()).getInitializer())
+                    .getExpression()));
+        }
         if(declarationEdge.getDeclaration() instanceof CFunctionDeclaration) {
           for( CParameterDeclaration p:  ((CFunctionDeclaration)declarationEdge.getDeclaration()).getParameters()) {
             vars.add(new SimpleVariable(p));
@@ -104,6 +109,12 @@ public class QueryGenTransferRelation implements TransferRelation {
         CReturnStatementEdge returnStatementEdge = (CReturnStatementEdge) cfaEdge;
         if(returnStatementEdge.getExpression().isPresent())
           vars.addAll(Util.collectVariablesFromExpression(returnStatementEdge.getExpression().get()));
+        break;
+      }
+      case AssumeEdge: {
+        CAssumeEdge assumeEdge = (CAssumeEdge)cfaEdge;
+        vars.addAll(Util.collectVariablesFromExpression(assumeEdge.getExpression()));
+        break;
       }
     }
     QueryGenState successor = state.successor(cfaEdge.getPredecessor(),vars,cfaEdge.getSuccessor());

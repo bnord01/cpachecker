@@ -61,6 +61,7 @@ import org.sosy_lab.cpachecker.cfa.ast.AParameterDeclaration;
 import org.sosy_lab.cpachecker.cfa.ast.ASimpleDeclaration;
 import org.sosy_lab.cpachecker.cfa.ast.AStatement;
 import org.sosy_lab.cpachecker.cfa.ast.AVariableDeclaration;
+import org.sosy_lab.cpachecker.cfa.ast.c.CIdExpression;
 import org.sosy_lab.cpachecker.cfa.model.ADeclarationEdge;
 import org.sosy_lab.cpachecker.cfa.model.AReturnStatementEdge;
 import org.sosy_lab.cpachecker.cfa.model.AStatementEdge;
@@ -153,6 +154,9 @@ public class InformationFlowTransferRelation extends ForwardingTransferRelation<
       throws CPATransferException {
     if (statement instanceof AExpressionAssignmentStatement) {
       return handleAssignments((AAssignment) statement);
+    } else if (statement instanceof AExpressionStatement) {
+      logger.log(Level.WARNING, "Didn't handle ExpressionStatement ", statement, " on edge ",cfaEdge);
+      return handleEdgeWithoutStatement(cfaEdge);
     } else {
       throw new CPATransferException("Missing case for statement: " + statement);
     }
@@ -205,7 +209,7 @@ public class InformationFlowTransferRelation extends ForwardingTransferRelation<
           new SimpleDataDependencyState(state.getWrappedState(),variable));
     }
 
-    if(!IS_DATA_DEP_STATE || !variable.equals(simpleDataDependencyState.getVariable())) {
+    if(!IS_DATA_DEP_STATE || !variable.equals(simpleDataDependencyState.getVariable()) || !(leftHandSide instanceof CIdExpression)) {
       resultStates.add(state);
     }
 
@@ -313,13 +317,17 @@ public class InformationFlowTransferRelation extends ForwardingTransferRelation<
 
   }
 
-  @Override
-  protected Collection<InformationFlowState> handleBlankEdge(BlankEdge cfaEdge) {
-    if(IS_CONTROL_DEP_STATE && postDominators.get(controlDependencyState.getControllingNode()).contains(cfaEdge.getSuccessor())) {
+  private Collection<InformationFlowState> handleEdgeWithoutStatement(CFAEdge pCFAEdge) {
+    if(IS_CONTROL_DEP_STATE && postDominators.get(controlDependencyState.getControllingNode()).contains(pCFAEdge.getSuccessor())) {
       return Sets.newHashSet();
     } else {
       return Collections.singleton(state);
     }
+  }
+
+  @Override
+  protected Collection<InformationFlowState> handleBlankEdge(BlankEdge cfaEdge) {
+    return handleEdgeWithoutStatement(cfaEdge);
   }
 
   @Override
@@ -383,15 +391,15 @@ public class InformationFlowTransferRelation extends ForwardingTransferRelation<
   @Override
   public Collection<InformationFlowState> strengthen(AbstractState pElement, List<AbstractState> pOtherElements,
       CFAEdge pCfaEdge, Precision pPrecision) throws CPATransferException, InterruptedException {
-
     assert pElement instanceof InformationFlowState: "pElement not instance of InformationFlowState";
     InformationFlowState e = (InformationFlowState) pElement;
     InformationFlowPrecision p = (InformationFlowPrecision)pPrecision;
 
     Collection<? extends AbstractState> fs = childTR.strengthen(
-        e.getWrappedState(), pOtherElements, pCfaEdge, p);
+        e.getWrappedState(), pOtherElements, pCfaEdge, p.getWrappedPrecision());
 
-
+    if (fs == null)
+      return null;
     return Collections2.transform(fs, e.getRewrapFunction());
   }
 

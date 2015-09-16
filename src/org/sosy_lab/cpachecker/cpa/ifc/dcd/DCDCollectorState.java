@@ -64,9 +64,12 @@ public class DCDCollectorState implements LatticeAbstractState {
   @Override
   public LatticeAbstractState join(LatticeAbstractState pOther) {
     DCDCollectorState other = (DCDCollectorState) pOther;
+
+    if(isLessOrEqual(other)) return other;
+
     if(other.isLessOrEqual(this)) return this;
-    else if(isLessOrEqual(other)) return other;
-    else return new DCDCollectorState(Sets.union(active,other.active),Sets.union(dcd,other.dcd));
+
+    return new DCDCollectorState(Sets.union(active,other.active),Sets.union(dcd,other.dcd));
   }
 
   @Override

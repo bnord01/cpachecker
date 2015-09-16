@@ -174,7 +174,7 @@ public class InformationFlowCPA extends AbstractSingleWrapperCPA {
     ConfigurableProgramAnalysis ccpa = cpaBuilder.buildCPAs(cfa, Lists.<Path>newArrayList());
     Algorithm p = CPAAlgorithm.create(ccpa, logger, pdconfig, shutdownNotifier);
 
-    LocationMappedReachedSet l = new LocationMappedReachedSet(TraversalMethod.DFS);
+    LocationMappedReachedSet l = new LocationMappedReachedSet(TraversalMethod.BFS);
     CFANode exit = cfa.getMainFunction().getExitNode();
     l.add(ccpa.getInitialState(exit, null),
         ccpa.getInitialPrecision(exit, null));
@@ -210,7 +210,7 @@ public class InformationFlowCPA extends AbstractSingleWrapperCPA {
       ConfigurableProgramAnalysis ccpa = dcdcpaBuilder.buildCPAs(cfa, Lists.<Path>newArrayList());
       Algorithm p = CPAAlgorithm.create(ccpa, logger, config, shutdownNotifier);
 
-      LocationMappedReachedSet l = new LocationMappedReachedSet(TraversalMethod.DFS);
+      LocationMappedReachedSet l = new LocationMappedReachedSet(TraversalMethod.BFS);
       CFANode entry = cfa.getMainFunction();
       l.add(ccpa.getInitialState(entry, null),
           ccpa.getInitialPrecision(entry, null));

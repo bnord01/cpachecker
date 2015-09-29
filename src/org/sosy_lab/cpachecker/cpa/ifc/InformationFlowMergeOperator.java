@@ -54,10 +54,10 @@ public class InformationFlowMergeOperator implements MergeOperator {
     //Information flow states are equal, just do child merge
     Precision childPrecision = ((InformationFlowPrecision)precision).getWrappedPrecision();
     AbstractState mergedState = childMergeOperator.merge(childState1,childState2,childPrecision);
-    if(mergedState == childState1) {
-      return state1;
-    } else if (mergedState == childState2) {
+    if(mergedState == childState2) {
       return state2;
+    } else if (mergedState == childState1) {
+      return state1;
     } else {
       return ((InformationFlowState)state2).copyWith(mergedState);
     }

@@ -61,7 +61,7 @@ import org.sosy_lab.cpachecker.cpa.arg.ARGUtils;
 import org.sosy_lab.cpachecker.cpa.arg.ErrorPathShrinker;
 import org.sosy_lab.cpachecker.util.cwriter.PathToCTranslator;
 import org.sosy_lab.cpachecker.util.cwriter.PathToRealCTranslator;
-import org.sosy_lab.cpachecker.util.predicates.AssignableTerm;
+import org.sosy_lab.solver.AssignableTerm;
 
 import com.google.common.base.Predicate;
 import com.google.common.base.Predicates;
@@ -282,6 +282,7 @@ public class CEXExporter {
         witnessExporter.writePath(pAppendable, rootState,
                 ARGUtils.CHILDREN_OF_STATE,
                 Predicates.in(pathElements),
+                isTargetPathEdge,
                 counterexample);
       }
     });

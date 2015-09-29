@@ -38,13 +38,13 @@ import org.sosy_lab.common.log.LogManager;
 import org.sosy_lab.cpachecker.core.interfaces.AbstractState;
 import org.sosy_lab.cpachecker.core.interfaces.FormulaReportingState;
 import org.sosy_lab.cpachecker.util.globalinfo.GlobalInfo;
-import org.sosy_lab.cpachecker.util.predicates.interfaces.BitvectorFormula;
-import org.sosy_lab.cpachecker.util.predicates.interfaces.BitvectorFormulaManager;
-import org.sosy_lab.cpachecker.util.predicates.interfaces.BooleanFormula;
-import org.sosy_lab.cpachecker.util.predicates.interfaces.BooleanFormulaManager;
 import org.sosy_lab.cpachecker.util.predicates.interfaces.PathFormulaManager;
 import org.sosy_lab.cpachecker.util.predicates.interfaces.view.FormulaManagerView;
 import org.sosy_lab.cpachecker.util.states.MemoryLocation;
+import org.sosy_lab.solver.api.BitvectorFormula;
+import org.sosy_lab.solver.api.BitvectorFormulaManager;
+import org.sosy_lab.solver.api.BooleanFormula;
+import org.sosy_lab.solver.api.BooleanFormulaManager;
 
 import apron.Abstract0;
 import apron.Dimchange;
@@ -545,7 +545,7 @@ logger.log(Level.FINEST, "apron state: isEqual");
   private void readObject(java.io.ObjectInputStream in) throws IOException, ClassNotFoundException {
     in.defaultReadObject();
 
-    logger = GlobalInfo.getInstance().getLogManager();
+    logger = GlobalInfo.getInstance().getApronLogManager();
     apronManager = GlobalInfo.getInstance().getApronManager();
 
     byte[] deserialized = new byte[in.readInt()];
@@ -623,11 +623,11 @@ logger.log(Level.FINEST, "apron state: isEqual");
       switch(pNode.getOperation()) {
 
       // real operations
-      case Texpr0BinNode.OP_ADD: return bitFmgr.add(left, right);
+      case Texpr0BinNode.OP_ADD: return bitFmgr.add(left, right, true);
       case Texpr0BinNode.OP_DIV: return bitFmgr.divide(left, right, true);
       case Texpr0BinNode.OP_MOD: return bitFmgr.modulo(left, right, true);
-      case Texpr0BinNode.OP_SUB: return bitFmgr.subtract(left, right);
-      case Texpr0BinNode.OP_MUL: return bitFmgr.multiply(left, right);
+      case Texpr0BinNode.OP_SUB: return bitFmgr.subtract(left, right, true);
+      case Texpr0BinNode.OP_MUL: return bitFmgr.multiply(left, right, true);
       case Texpr0BinNode.OP_POW: throw new AssertionError("Pow not implemented in this visitor");
       default:
         throw new AssertionError("Unhandled operator for binary nodes.");
@@ -661,7 +661,7 @@ logger.log(Level.FINEST, "apron state: isEqual");
     BitvectorFormula visit(Texpr0UnNode pNode) {
       BitvectorFormula operand = visit(pNode.getArgument());
       switch(pNode.getOperation()) {
-      case Texpr0UnNode.OP_NEG: return bitFmgr.negate(operand);
+      case Texpr0UnNode.OP_NEG: return bitFmgr.negate(operand, true);
       case Texpr0UnNode.OP_SQRT: throw new AssertionError("sqrt not implemented in this visitor");
       default:
         // nothing to do here, we ignore casts

@@ -56,14 +56,15 @@ import org.sosy_lab.cpachecker.cpa.arg.ARGUtils;
 import org.sosy_lab.cpachecker.cpa.predicate.PredicateCPA;
 import org.sosy_lab.cpachecker.exceptions.CPAException;
 import org.sosy_lab.cpachecker.exceptions.CPATransferException;
-import org.sosy_lab.cpachecker.exceptions.SolverException;
+import org.sosy_lab.solver.SolverException;
 import org.sosy_lab.cpachecker.util.CPAs;
+import org.sosy_lab.cpachecker.util.predicates.AssignmentToPathAllocator;
+import org.sosy_lab.solver.Model;
 import org.sosy_lab.cpachecker.util.predicates.PathChecker;
-import org.sosy_lab.cpachecker.util.predicates.Model;
 import org.sosy_lab.cpachecker.util.predicates.Solver;
-import org.sosy_lab.cpachecker.util.predicates.interfaces.BooleanFormula;
+import org.sosy_lab.solver.api.BooleanFormula;
 import org.sosy_lab.cpachecker.util.predicates.interfaces.PathFormulaManager;
-import org.sosy_lab.cpachecker.util.predicates.interfaces.ProverEnvironment;
+import org.sosy_lab.solver.api.ProverEnvironment;
 import org.sosy_lab.cpachecker.util.predicates.interfaces.view.BooleanFormulaManagerView;
 import org.sosy_lab.cpachecker.util.predicates.interfaces.view.FormulaManagerView;
 import org.sosy_lab.cpachecker.util.predicates.interpolation.CounterexampleTraceInfo;
@@ -91,10 +92,10 @@ public class BMCAlgorithm extends AbstractBMCAlgorithm implements Algorithm {
   private final PathFormulaManager pmgr;
   private final BooleanFormulaManagerView bfmgr;
   private final Solver solver;
-  private final MachineModel machineModel;
 
   private final Configuration config;
   private final CFA cfa;
+  private final AssignmentToPathAllocator assignmentToPathAllocator;
 
   public BMCAlgorithm(Algorithm pAlgorithm, ConfigurableProgramAnalysis pCPA,
                       Configuration pConfig, LogManager pLogger,
@@ -118,13 +119,17 @@ public class BMCAlgorithm extends AbstractBMCAlgorithm implements Algorithm {
     fmgr = solver.getFormulaManager();
     bfmgr = fmgr.getBooleanFormulaManager();
     pmgr = predCpa.getPathFormulaManager();
-    machineModel = predCpa.getMachineModel();
+    MachineModel machineModel = predCpa.getMachineModel();
+
+    assignmentToPathAllocator = new AssignmentToPathAllocator(config, shutdownNotifier, pLogger, machineModel);
   }
 
   @Override
   public AlgorithmStatus run(final ReachedSet reachedSet) throws CPAException, InterruptedException {
     try {
       return super.run(reachedSet);
+    } catch (SolverException e) {
+      throw new CPAException("Solver Failure", e);
     } finally {
       invariantGenerator.cancel();
     }
@@ -145,7 +150,7 @@ public class BMCAlgorithm extends AbstractBMCAlgorithm implements Algorithm {
     if (!checkTargetStates) {
       return true;
     }
-    
+
     return super.boundedModelCheck(pReachedSet, pProver, pInductionProblem);
   }
 
@@ -256,8 +261,8 @@ public class BMCAlgorithm extends AbstractBMCAlgorithm implements Algorithm {
           return;
         }
       }
-      PathChecker pathChecker = new PathChecker(logger, shutdownNotifier, pmgr, solver, machineModel);
       try {
+        PathChecker pathChecker = new PathChecker(logger, pmgr, solver, assignmentToPathAllocator);
         CounterexampleTraceInfo info = pathChecker.checkPath(targetPath.getInnerEdges());
 
         if (info.isSpurious()) {

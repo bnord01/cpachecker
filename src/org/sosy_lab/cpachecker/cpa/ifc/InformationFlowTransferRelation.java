@@ -155,7 +155,6 @@ public class InformationFlowTransferRelation extends ForwardingTransferRelation<
     if (statement instanceof AExpressionAssignmentStatement) {
       return handleAssignments((AAssignment) statement);
     } else if (statement instanceof AExpressionStatement) {
-      logger.log(Level.WARNING, "Didn't handle ExpressionStatement ", statement, " on edge ",cfaEdge);
       return handleEdgeWithoutStatement(cfaEdge);
     } else {
       throw new CPATransferException("Missing case for statement: " + statement);

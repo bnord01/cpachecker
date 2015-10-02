@@ -70,6 +70,8 @@ public class InformationFlowPrecisionAdjustment implements PrecisionAdjustment {
     Precision newChildPrecision = inner.precision();
 
     Action action = inner.action();
+    if(ifs.isTarget())
+      action = Action.BREAK;
     if ((newChildState != childState) || (newChildPrecision != childPrecision)) {
       AbstractState newState = ifs.copyWith(newChildState);
       Precision newPrecision = new InformationFlowPrecision(newChildPrecision);

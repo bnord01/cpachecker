@@ -45,10 +45,13 @@ public class InformationFlowStopOperator implements StopOperator {
   @Override
   public boolean stop(AbstractState state, Collection<AbstractState> reached,
       Precision precision) throws CPAException, InterruptedException {
+    AbstractState childState = ((InformationFlowState)state).getWrappedState();
+    Collection<AbstractState> reachedChild = from(reached).filter(((InformationFlowState)state).getEqualsExceptChildPredicate()).transform(InformationFlowState.unWrapFunc).toSet();
+    Precision childPrecision = ((InformationFlowPrecision)precision).getWrappedPrecision();
     return childStopOperator.stop(
-        ((InformationFlowState)state).getWrappedState(),
-        from(reached).filter(((InformationFlowState)state).getEqualsExceptChildPredicate()).transform(InformationFlowState.unWrapFunc).toSet(),
-        ((InformationFlowPrecision)precision).getWrappedPrecision());
+        childState,
+        reachedChild,
+        childPrecision);
 
   }
 }

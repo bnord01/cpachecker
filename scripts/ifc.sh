@@ -31,6 +31,7 @@ RESULTFILE="`pwd`/results.txt"
 CPA="$PATH_TO_CPACHECKER/scripts/cpa.sh"
 rm -f "$RESULTFILE"
 touch "$RESULTFILE"
+mkdir -p output
 
 COUNT=0
 

@@ -28,6 +28,8 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.PrintStream;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.logging.Level;
@@ -53,13 +55,17 @@ import com.google.common.collect.Sets;
  * Created by bnord on 02.09.15.
  */
 
-
+@Options(prefix = "ifc.querygen")
 public class QueryGenMergeOperator implements MergeOperator {
   MergeOperator mergeOperator;
   LogManager logManager;
   String programNames;
   String simpleName;
   String output;
+  @Option(description = "Maximum number of queries to run.")
+  int maxQueries = 1000;
+  @Option(description = "Seed for random selection if more than maxQueries of variable pairs found.")
+  int seed = 42;
   public QueryGenMergeOperator(MergeOperator pMergeOperator,LogManager pLogManager,Configuration config)
       throws InvalidConfigurationException {
     programNames = config.getProperty("analysis.programNames");
@@ -68,6 +74,7 @@ public class QueryGenMergeOperator implements MergeOperator {
     output = config.getProperty("output.path");
     this.mergeOperator = pMergeOperator;
     this.logManager = pLogManager;
+    config.inject(this);
   }
 
   @Override
@@ -88,6 +95,19 @@ public class QueryGenMergeOperator implements MergeOperator {
           }
         }
       }
+
+      // Pick random sample if more than maxQueries variable pairs.
+      if(queries.size()>maxQueries) {
+        Collections.sort(queries, new Comparator<Pair<Variable, Variable>>() {
+          @Override
+          public int compare(Pair<Variable, Variable> o1, Pair<Variable, Variable> o2) {
+            return o1.hashCode() - o2.hashCode();
+          }
+        });
+        Collections.shuffle(queries,new java.util.Random(seed));
+        queries = queries.subList(0,maxQueries);
+      }
+
       try {
         PrintStream out = new PrintStream(new BufferedOutputStream(new FileOutputStream(output + File.separator + simpleName + ".ifc.sh")));
         try {
@@ -97,7 +117,8 @@ public class QueryGenMergeOperator implements MergeOperator {
             out.println("# " + v.getQualifiedName());
           }
           out.println("#########################");
-          out.println("if [ -z \"$1\" ]; then resfile='result'; else resfile=\"$1\"; fi");
+          out.println("if [ -z \"$1\" ]; then resfile='result.txt'; else resfile=\"$1\"; fi");
+          out.println("csvfile=\"${resfile}.csv\"");
           out.println("secure=0");
           out.println("insecure=0");
           out.println("error=0");
@@ -135,17 +156,20 @@ public class QueryGenMergeOperator implements MergeOperator {
               out.println(" > " + outdir + "/result.txt");
               out.println("if grep --quiet TRUE " + outdir + "/result.txt; then");
               out.println("\t((secure++))");
-              out.print("\techo " + proc + " No flow in "+qry);
+              out.print("\techo " + proc + " No flow in " + qry);
               out.println(" found using predicate analysis \\( $secure / $insecure / $error \\).");
+              out.println("\techo \""+simpleName+","+src.getQualifiedName()+","+snk.getQualifiedName()+",PREDICATE,SECURE\" >> $csvfile");
               out.println("else");
               out.println("\tif grep --quiet FALSE " + outdir + "/result.txt; then");
               out.println("\t\t((insecure++))");
-              out.print("\t\techo "+ proc + " Flow in "+qry);
+              out.print("\t\techo " + proc + " Flow in " + qry);
               out.println(" found using predicate analysis \\( $secure / $insecure / $error \\).");
+              out.println("\t\techo \""+simpleName+","+src.getQualifiedName()+","+snk.getQualifiedName()+",PREDICATE,FLOW\" >> $csvfile");
               out.println("\telse");
               out.println("\t\t((error++))");
-              out.print("\t\techo "+ proc + " Error checking for flow in "+qry);
+              out.print("\t\techo " + proc + " Error checking for flow in " + qry);
               out.println(" using predicate analysis \\( $secure / $insecure / $error \\).");
+              out.println("\t\techo \""+simpleName+","+src.getQualifiedName()+","+snk.getQualifiedName()+",PREDICATE,ERROR\" >> $csvfile");
               out.println("\tfi");
               out.println("fi");
               out.println("#");
@@ -175,17 +199,20 @@ public class QueryGenMergeOperator implements MergeOperator {
               out.println(" > " + outdir0 + "/result.txt");
               out.println("if grep --quiet TRUE " + outdir0 + "/result.txt; then");
               out.println("\t((secure0++))");
-              out.print("\techo "+ proc + " No flow in "+qry);
+              out.print("\techo " + proc + " No flow in " + qry);
               out.println(" found using location analysis \\( $secure0 / $insecure0 / $error0 \\).");
+              out.println("\techo \""+simpleName+","+src.getQualifiedName()+","+snk.getQualifiedName()+",LOCATION,SECURE\" >> $csvfile");
               out.println("else");
               out.println("\tif grep --quiet FALSE " + outdir0 + "/result.txt; then");
               out.println("\t\t((insecure0++))");
-              out.print("\t\techo "+ proc + " Flow in "+qry);
+              out.print("\t\techo " + proc + " Flow in " + qry);
               out.println(" found using location analysis \\( $secure0 / $insecure0 / $error0 \\).");
+              out.println("\t\techo \""+simpleName+","+src.getQualifiedName()+","+snk.getQualifiedName()+",LOCATION,FLOW\" >> $csvfile");
               out.println("\telse");
               out.println("\t\t((error0++))");
               out.print("\t\techo "+ proc + " Error checking for flow in "+qry);
               out.println(" using location analysis \\( $secure0 / $insecure0 / $error0 \\).");
+              out.println("\t\techo \""+simpleName+","+src.getQualifiedName()+","+snk.getQualifiedName()+",LOCATION,ERROR\" >> $csvfile");
               out.println("\tfi");
               out.println("fi");
               out.println("#");

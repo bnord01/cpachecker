@@ -98,12 +98,6 @@ public class QueryGenMergeOperator implements MergeOperator {
 
       // Pick random sample if more than maxQueries variable pairs.
       if(queries.size()>maxQueries) {
-        Collections.sort(queries, new Comparator<Pair<Variable, Variable>>() {
-          @Override
-          public int compare(Pair<Variable, Variable> o1, Pair<Variable, Variable> o2) {
-            return o1.hashCode() - o2.hashCode();
-          }
-        });
         Collections.shuffle(queries,new java.util.Random(seed));
         queries = queries.subList(0,maxQueries);
       }

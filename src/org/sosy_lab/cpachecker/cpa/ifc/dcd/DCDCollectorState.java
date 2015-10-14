@@ -41,8 +41,8 @@ public class DCDCollectorState implements LatticeAbstractState {
   private Set<Pair<CFANode,Variable>> dcd;
 
   private DCDCollectorState(Set<CFANode> pActive, Set<Pair<CFANode,Variable>> pDcd) {
-    this.active = pActive;
-    this.dcd = pDcd;
+    this.active = Sets.newHashSet(pActive);
+    this.dcd = Sets.newHashSet(pDcd);
   }
   public DCDCollectorState() {
     this.active = Sets.newHashSet();
@@ -57,7 +57,7 @@ public class DCDCollectorState implements LatticeAbstractState {
     }
     Set<CFANode> newActive = Sets.difference(active,inactiveNodes);
     if(!inactiveNodes.contains(source))
-      newActive = Sets.union(newActive,Sets.newHashSet(source));
+      newActive = Sets.union(Sets.newHashSet(source),newActive);
     return new DCDCollectorState(newActive,newDcd);
   }
 

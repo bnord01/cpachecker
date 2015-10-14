@@ -46,7 +46,7 @@ import com.google.common.collect.Sets;
 public class Util {
 
   public static <E> Set<E> insert(Set<E> set, E elem) {
-    return set.contains(elem)?set:Sets.union(set, Sets.newHashSet(elem));
+    return set.contains(elem)?set:Sets.newHashSet(Sets.union(Sets.newHashSet(elem),set));
   }
 
   public static boolean isAssignment(CExpression pCExpression) {

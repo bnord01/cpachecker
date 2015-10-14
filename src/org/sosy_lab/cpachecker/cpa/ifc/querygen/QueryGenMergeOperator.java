@@ -91,6 +91,7 @@ public class QueryGenMergeOperator implements MergeOperator {
       try {
         PrintStream out = new PrintStream(new BufferedOutputStream(new FileOutputStream(output + File.separator + simpleName + ".ifc.sh")));
         try {
+          out.println("#!/bin/bash");
           out.println("# Variables in cosideration: ");
           for(Variable v : snks) {
             out.println("# " + v.getQualifiedName());
@@ -143,8 +144,8 @@ public class QueryGenMergeOperator implements MergeOperator {
               out.println(" found using predicate analysis \\( $secure / $insecure / $error \\).");
               out.println("\telse");
               out.println("\t\t((error++))");
-              out.print("\t\techo "+ proc + " Flow in "+qry);
-              out.println(" found using predicate analysis \\( $secure / $insecure / $error \\).");
+              out.print("\t\techo "+ proc + " Error checking for flow in "+qry);
+              out.println(" using predicate analysis \\( $secure / $insecure / $error \\).");
               out.println("\tfi");
               out.println("fi");
               out.println("#");
@@ -183,8 +184,8 @@ public class QueryGenMergeOperator implements MergeOperator {
               out.println(" found using location analysis \\( $secure0 / $insecure0 / $error0 \\).");
               out.println("\telse");
               out.println("\t\t((error0++))");
-              out.print("\t\techo "+ proc + " Flow in "+qry);
-              out.println(" found using location analysis \\( $secure0 / $insecure0 / $error0 \\).");
+              out.print("\t\techo "+ proc + " Error checking for flow in "+qry);
+              out.println(" using location analysis \\( $secure0 / $insecure0 / $error0 \\).");
               out.println("\tfi");
               out.println("fi");
               out.println("#");

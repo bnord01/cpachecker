@@ -45,8 +45,8 @@ public class QueryGenState implements LatticeAbstractState {
 
   private Set<CFANode> visited;
   public QueryGenState(Set<CFANode> pVisited, Set<Pair<CFANode, Variable>> pReads) {
-    this.visited = pVisited;
-    this.reads = pReads;
+    this.visited = Sets.newHashSet(pVisited);
+    this.reads = Sets.newHashSet(pReads);
   }
 
   public QueryGenState successor(CFANode src, Set<Variable> readVars, CFANode snk) {

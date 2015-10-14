@@ -49,7 +49,7 @@ while [ $# -gt 0 ]; do
         then
             echo "Running queries for $file"
             pushd "$PATH_TO_CPACHECKER" > /dev/null 
-            sh "$SCRIPTFILE" "$RESULTFILE"
+            bash "$SCRIPTFILE" "$RESULTFILE"
             popd > /dev/null
         else
             echo "Error running query gen on $file"

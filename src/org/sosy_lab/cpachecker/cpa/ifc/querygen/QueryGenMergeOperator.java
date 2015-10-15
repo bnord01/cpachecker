@@ -66,6 +66,8 @@ public class QueryGenMergeOperator implements MergeOperator {
   int maxQueries = 1000;
   @Option(description = "Seed for random selection if more than maxQueries of variable pairs found.")
   int seed = 42;
+  @Option(description = "Number of errors allowed before skipping analysis of program.")
+  int maxError = 3;
   public QueryGenMergeOperator(MergeOperator pMergeOperator,LogManager pLogManager,Configuration config)
       throws InvalidConfigurationException {
     programNames = config.getProperty("analysis.programNames");
@@ -122,6 +124,7 @@ public class QueryGenMergeOperator implements MergeOperator {
           int num = queries.size() * 2;
           int count = 0;
           for(Pair<Variable,Variable> pair: queries) {
+            out.println("if [ $error -lt "+maxError+" ]; then");
             count ++;
             Variable src = pair.getFirst();
             Variable snk = pair.getSecond();
@@ -211,6 +214,7 @@ public class QueryGenMergeOperator implements MergeOperator {
               out.println("fi");
               out.println("#");
             }
+            out.println("fi");
           }
           out.println("echo Analysis done!");
           out.println("echo Predicate analysis:  $secure secure / $insecure insecure / $error error / " + num + " total");
